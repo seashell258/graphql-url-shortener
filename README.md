@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Crypto-Arsenal 後端實習測試
 
 感謝您應徵 Crypto-Arsenal 的後端實習工程師職位！此儲存庫作為線上測試題目使用，請依照以下步驟進行：
@@ -35,7 +36,9 @@
 
 ### Git
 
-切換到 `test` 分支並依據 README 完成任務。
+- 請將當前分支對 `main` 分支執行 `git rebase`，並在遇到衝突時，以當前分支的內容覆蓋 `main` 分支中的 `### Git` 部分。
+- 操作完成後，將此分支推送至 GitHub。
+- 請切回主分支繼續作答其他題目。
 
 ### URL shortener system
 
@@ -163,3 +166,4 @@ it('should create a new shortened URL', async () => {
 
 - 實作 Bloom Filter，用以在查詢 Redis/MySQL 前檢查資料是否存在。
 - 其他優化想法
+
