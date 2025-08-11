@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { GraphQLError } from "graphql";
 import { Context, ShortenedURL } from "../typeDefs/types";
 
+
 export default {
   Query: {
     getUrl: async (
@@ -44,34 +45,41 @@ export default {
     },
   },
   Mutation: {
-    createUrl: async (
-      _: any,
-      { originalUrl }: { originalUrl: string },
-      { prisma, redis }: Context
-    ): Promise<ShortenedURL> => {
-      try {
-        let shortCode: string;
+    const resolvers = {
+      Mutation: {
+        createUrl: async (_parent, args, context) => {
+          const { originalUrl, shortCode, ttl } = args;
 
-        shortCode = nanoid(7);
+          // 產生 shortCode
+          const code = shortCode || nanoid(10);
 
-        const newUrl = await prisma.shortenedURL.create({
-          data: {
-            originalUrl,
-            shortCode,
-          },
-        });
+          // 計算 expiredAt
+          let expiredAt: Date | null = null;
 
-        // Cache the new URL
-        await redis.set(shortCode, originalUrl, "EX", 3600);
+          if (ttl) {
+            expiredAt = new Date(Date.now() + ttl * 1000);
+          }
 
-        return newUrl;
-      } catch (error) {
-        console.error("Error in createUrl resolver:", error);
-        throw new GraphQLError("Failed to create shortened URL", {
-          extensions: { code: "INTERNAL_SERVER_ERROR" },
-        });
-      }
+          // 新增資料到資料庫
+          const newUrl = await context.prisma.shortenedURL.create({
+            data: {
+              originalUrl,
+              shortCode: code,
+              expiredAt, // 需要在 prisma schema 裡有定義這欄位
+            },
+          });
+
+          // 快取到 Redis
+          await context.redis.set(code, originalUrl);
+
+          return newUrl;
+        },
+      },
+
     },
+
+  },
+};
     // TODO
     // updateUrl: async (
     //   _: any,
@@ -85,5 +93,3 @@ export default {
     //   { prisma, redis }: Context
     // ): Promise<boolean> => {
     // },
-  },
-};
