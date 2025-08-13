@@ -21,7 +21,7 @@ services:
     image: redis:latest
     container_name: urlshortener_redis
     ports:
-      - "6379:6379"
+      - "16386:6379"
     volumes:
       - redis_data:/data
     healthcheck:

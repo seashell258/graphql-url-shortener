@@ -10,9 +10,8 @@ import path from 'path';
 const prisma = new PrismaClient();
 const redis = new Redis({
   host: process.env.REDIS_HOST,
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  username: process.env.REDIS_USER,
-  password: process.env.REDIS_PASSWORD,
+  port: parseInt(process.env.REDIS_PORT || '16386'), //@seashell: 真值就用左邊。 不是 or 
+
 });
 
 async function startServer() {
