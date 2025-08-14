@@ -87,6 +87,41 @@ export default {
         })
       }
     },
+    updateUrl: async (
+      _: any,
+      { shortCode, newUrl }: { shortCode: string; newUrl: string },
+      { prisma, redis }: Context
+    ): Promise<ShortenedURL> => {
+      try {
+        // 先確認資料庫裡有這個 shortCode
+        const existing = await prisma.shortenedURL.findUnique({
+          where: { shortCode },
+        });
+
+        if (!existing) {
+          throw new GraphQLError("URL not found", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        // 更新資料庫
+        const updated = await prisma.shortenedURL.update({
+          where: { shortCode },
+          data: { originalUrl: newUrl },
+        });
+
+        // 更新 Redis 快取
+        // 如果有 TTL，可以選擇重新設置過期時間，這裡假設 1 小時
+        await redis.set(shortCode, newUrl, "EX", 3600);
+
+        return updated;
+      } catch (error) {
+        console.error("Error in updateUrl resolver:", error);
+        throw new GraphQLError("Failed to update URL", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    }
   },
 
 }

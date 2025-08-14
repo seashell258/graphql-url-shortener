@@ -13,5 +13,7 @@ type Query {
 
 type Mutation {
   createUrl(originalUrl: String!, shortCode: String, ttl: Int): ShortenedURL
+  updateUrl(newUrl: String!, shortCode: String!, ttl: Int): ShortenedURL
+  deleteUrl(originalUrl: String,shortCode: String): Boolean
   # TODO
 }
