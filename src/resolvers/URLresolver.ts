@@ -121,22 +121,51 @@ export default {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
         });
       }
+    },
+    deleteUrl: async (
+      _: any,
+      { shortCode, originalUrl }: { shortCode?: string; originalUrl?: string },
+      { prisma, redis }: Context
+    ): Promise<boolean> => {
+      try {
+        if (!shortCode && !originalUrl) {
+          throw new GraphQLError("Must provide shortCode or originalUrl", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+
+        // shortCode 和 originalUrl 至少要有一個。 用其中一個當條件去刪除資料庫的一筆資料
+        const existing = await prisma.shortenedURL.findFirst({
+          where: { 
+            OR: [  // or 符合陣列其一就會被選中，
+              shortCode ? { shortCode } : undefined,
+              originalUrl ? { originalUrl } : undefined,
+            ].filter(Boolean) as any[], // 陣列中只有真值 ( user 的 input )。
+          },
+        });
+
+        if (!existing) {
+          throw new GraphQLError("URL not found", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+        // 刪除資料庫
+        await prisma.shortenedURL.delete({
+          where: { shortCode: existing.shortCode },
+        });
+
+        // 刪除 Redis 快取
+        await redis.del(existing.shortCode);
+
+        return true;
+      } catch (error) {
+        console.error("Error in deleteUrl resolver:", error);
+        throw new GraphQLError("Failed to delete URL", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
     }
+
   },
 
 }
-
-
-// TODO
-// updateUrl: async (
-//   _: any,
-//   { shortCode, newUrl }: { shortCode: string; newUrl: string },
-//   { prisma, redis }: Context
-// ): Promise<ShortenedURL> => {
-// },
-// deleteUrl: async (
-//   _: any,
-//   { shortCode }: { shortCode: string },
-//   { prisma, redis }: Context
-// ): Promise<boolean> => {
-// },
