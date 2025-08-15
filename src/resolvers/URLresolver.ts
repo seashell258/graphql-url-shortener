@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { GraphQLError } from "graphql";
 import { Context, ShortenedURL } from "../typeDefs/types";
-
+import { normalizeUrl } from "./utils/normalizeUrl";
 
 export default {
   Query: {
@@ -15,7 +15,6 @@ export default {
       // 原本就算有 handle啦？　不知道意思
       // ttl 可以理解 應該就是如果這個網址 expire了 get url 應該就要取不到資料了。 
       // 應該就是資料庫要定期清理。 把資料刪掉
-
       try {
         // Try to get the URL from Redis cache
         const cachedUrl = await redis.get(shortCode);
@@ -56,6 +55,7 @@ export default {
       { originalUrl, shortCode, ttl }: { originalUrl: string; shortCode?: string; ttl?: number },
       { prisma, redis }: Context
     ): Promise<ShortenedURL> => {
+      const normalizedUrl = normalizeUrl(originalUrl)
       try {
         // fill shortCode when it's null
         const shortURL = shortCode || nanoid(10);
@@ -70,14 +70,14 @@ export default {
         // 新增資料到資料庫
         const newUrl = await prisma.shortenedURL.create({
           data: {
-            originalUrl,
+            originalUrl: normalizedUrl,
             shortCode: shortURL,
             expiredAt, // 需要在 prisma schema 裡有定義這欄位
           },
         });
 
         // 快取到 Redis
-        await redis.set(shortURL, originalUrl);
+        await redis.set(shortURL, normalizedUrl);
 
         return newUrl;
       } catch (error) {
@@ -92,10 +92,12 @@ export default {
       { shortCode, newUrl }: { shortCode: string; newUrl: string },
       { prisma, redis }: Context
     ): Promise<ShortenedURL> => {
+      const normalizedNewUrl = normalizeUrl(newUrl)
+
       try {
         // 先確認資料庫裡有這個 shortCode
         const existing = await prisma.shortenedURL.findUnique({
-          where: { shortCode },
+          where: { shortCode:shortCode },
         });
 
         if (!existing) {
@@ -106,13 +108,13 @@ export default {
 
         // 更新資料庫
         const updated = await prisma.shortenedURL.update({
-          where: { shortCode },
-          data: { originalUrl: newUrl },
+          where: { shortCode:shortCode },
+          data: { originalUrl: normalizedNewUrl },
         });
 
         // 更新 Redis 快取
         // 如果有 TTL，可以選擇重新設置過期時間，這裡假設 1 小時
-        await redis.set(shortCode, newUrl, "EX", 3600);
+        await redis.set(shortCode, normalizedNewUrl, "EX", 3600);
 
         return updated;
       } catch (error) {
@@ -134,12 +136,14 @@ export default {
           });
         }
 
+        const normalizedUrl = originalUrl ? normalizeUrl(originalUrl) : undefined;
+
         // shortCode 和 originalUrl 至少要有一個。 用其中一個當條件去刪除資料庫的一筆資料
         const existing = await prisma.shortenedURL.findFirst({
-          where: { 
+          where: {
             OR: [  // or 符合陣列其一就會被選中，
-              shortCode ? { shortCode } : undefined,
-              originalUrl ? { originalUrl } : undefined,
+              shortCode ? { shortCode:shortCode } : undefined,
+              normalizedUrl ? { originalUrl: normalizedUrl } : undefined,
             ].filter(Boolean) as any[], // 陣列中只有真值 ( user 的 input )。
           },
         });
