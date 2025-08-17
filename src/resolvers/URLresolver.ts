@@ -10,12 +10,12 @@ export default {
       { shortCode }: { shortCode: string },
       { prisma, redis }: Context
     ): Promise<ShortenedURL | null> => {
-      // TODO: handle custom shortCode and ttl
-      //@seashell: 不太懂 來取 url 的應該都是有隨機十位數的url 或是當時自己輸入的 shorcode 
-      // 原本就算有 handle啦？　不知道意思
-      // ttl 可以理解 應該就是如果這個網址 expire了 get url 應該就要取不到資料了。 
-      // 應該就是資料庫要定期清理。 把資料刪掉
       try {
+        const exists = await redis.call("BF.EXISTS", "shortUrlFilter", shortCode);
+
+        if (exists === 0) {
+          throw new GraphQLError("URL not found", { extensions: { code: "NOT_FOUND" } });
+        }
         // Try to get the URL from Redis cache
         const cachedUrl = await redis.get(shortCode);
         if (cachedUrl) {
@@ -69,8 +69,16 @@ export default {
           await redis.set(shortURL, normalizedUrl, "EX", ttl);
           //console.log(await redis.get(shortURL)); 
 
+        } else {
+          await redis.set(shortURL, normalizedUrl);
         }
-        await redis.set(shortURL, normalizedUrl);
+        try {
+          await redis.call("BF.ADD", "shortUrlFilter", shortURL);
+        } catch (e: any) {
+          console.error("Bloom Filter error:", e.message);
+        }
+
+
         const newUrl = await prisma.shortenedURL.create({
           data: {
             originalUrl: normalizedUrl,

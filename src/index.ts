@@ -14,7 +14,23 @@ const redis = new Redis({
 
 });
 
+async function initBloomFilter() {
+  try {
+    // 建立 Bloom Filter，如果已存在就跳過
+    await redis.call("BF.RESERVE", "shortUrlFilter", 0.01, 1000000);
+    console.log("✅ Bloom Filter initialized");
+  } catch (e: any) {
+    if (e.message.includes("exists")) {
+      console.log("ℹ️ Bloom Filter already exists");
+    } else {
+      throw e;
+    }
+  }
+}
+
+
 async function startServer() {
+  await initBloomFilter();
   const typeDefs = await loadFiles(path.join(__dirname, './typeDefs/*.graphql'));
   const resolvers = await loadFiles(path.join(__dirname, './resolvers/*.ts'));
 
