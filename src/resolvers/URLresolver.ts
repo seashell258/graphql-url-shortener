@@ -33,7 +33,7 @@ export default {
         console.log("from database ")//@seashell: 
 
         if (url) {
-          // Cache the result in Redis
+          // Cache the result in Redis for an hour
           await redis.set(shortCode, url.originalUrl, "EX", 3600);
           return url;
         }
@@ -60,24 +60,26 @@ export default {
         // fill shortCode when it's null
         const shortURL = shortCode || nanoid(10);
 
-        // 計算 expiredAt
         let expiredAt: Date | null = null;
 
         if (ttl) {
           expiredAt = new Date(Date.now() + ttl * 1000);
+
+          // 快取到 Redis，用 EX  => 以秒為單位
+          await redis.set(shortURL, normalizedUrl, "EX", ttl);
+          //console.log(await redis.get(shortURL)); 
+
         }
 
-        // 新增資料到資料庫
         const newUrl = await prisma.shortenedURL.create({
           data: {
             originalUrl: normalizedUrl,
             shortCode: shortURL,
-            expiredAt, // 需要在 prisma schema 裡有定義這欄位
+            expiredAt,
           },
         });
 
-        // 快取到 Redis
-        await redis.set(shortURL, normalizedUrl);
+
 
         return newUrl;
       } catch (error) {
@@ -97,7 +99,7 @@ export default {
       try {
         // 先確認資料庫裡有這個 shortCode
         const existing = await prisma.shortenedURL.findUnique({
-          where: { shortCode:shortCode },
+          where: { shortCode: shortCode },
         });
 
         if (!existing) {
@@ -108,13 +110,10 @@ export default {
 
         // 更新資料庫
         const updated = await prisma.shortenedURL.update({
-          where: { shortCode:shortCode },
+          where: { shortCode: shortCode },
           data: { originalUrl: normalizedNewUrl },
         });
 
-        // 更新 Redis 快取
-        // 如果有 TTL，可以選擇重新設置過期時間，這裡假設 1 小時
-        await redis.set(shortCode, normalizedNewUrl, "EX", 3600);
 
         return updated;
       } catch (error) {
@@ -142,7 +141,7 @@ export default {
         const existing = await prisma.shortenedURL.findFirst({
           where: {
             OR: [  // or 符合陣列其一就會被選中，
-              shortCode ? { shortCode:shortCode } : undefined,
+              shortCode ? { shortCode: shortCode } : undefined,
               normalizedUrl ? { originalUrl: normalizedUrl } : undefined,
             ].filter(Boolean) as any[], // 陣列中只有真值 ( user 的 input )。
           },
