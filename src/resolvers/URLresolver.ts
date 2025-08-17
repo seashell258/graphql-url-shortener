@@ -70,7 +70,7 @@ export default {
           //console.log(await redis.get(shortURL)); 
 
         }
-
+        await redis.set(shortURL, normalizedUrl);
         const newUrl = await prisma.shortenedURL.create({
           data: {
             originalUrl: normalizedUrl,
@@ -114,7 +114,7 @@ export default {
           data: { originalUrl: normalizedNewUrl },
         });
 
-
+        await redis.del(shortCode);
         return updated;
       } catch (error) {
         console.error("Error in updateUrl resolver:", error);
