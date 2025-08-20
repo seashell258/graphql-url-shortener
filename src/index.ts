@@ -18,10 +18,10 @@ async function initBloomFilter() {
   try {
     // 建立 Bloom Filter，如果已存在就跳過
     await redis.call("BF.RESERVE", "shortUrlFilter", 0.01, 1000000);
-    console.log("✅ Bloom Filter initialized");
+    console.log(" Bloom Filter initialized");
   } catch (e: any) {
     if (e.message.includes("exists")) {
-      console.log("ℹ️ Bloom Filter already exists");
+      console.log(" Bloom Filter already exists");
     } else {
       throw e;
     }

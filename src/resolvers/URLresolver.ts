@@ -42,6 +42,9 @@ export default {
           extensions: { code: "NOT_FOUND" },
         });
       } catch (error) {
+        if (error instanceof GraphQLError) {
+          throw error
+        }
         console.error("Error in getUrl resolver:", error);
         throw new GraphQLError("Failed to retrieve URL", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
@@ -59,26 +62,8 @@ export default {
       try {
         // fill shortCode when it's null
         const shortURL = shortCode || nanoid(10);
-
         let expiredAt: Date | null = null;
-
-        if (ttl) {
-          expiredAt = new Date(Date.now() + ttl * 1000);
-
-          // 快取到 Redis，用 EX  => 以秒為單位
-          await redis.set(shortURL, normalizedUrl, "EX", ttl);
-          //console.log(await redis.get(shortURL)); 
-
-        } else {
-          await redis.set(shortURL, normalizedUrl);
-        }
-        try {
-          await redis.call("BF.ADD", "shortUrlFilter", shortURL);
-        } catch (e: any) {
-          console.error("Bloom Filter error:", e.message);
-        }
-
-
+        expiredAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
         const newUrl = await prisma.shortenedURL.create({
           data: {
             originalUrl: normalizedUrl,
@@ -87,19 +72,34 @@ export default {
           },
         });
 
+        if (ttl) {
+          // 快取到 Redis，用 EX  => 以秒為單位
+          await redis.set(shortURL, normalizedUrl, "EX", ttl);
+        }
+        else {
+          await redis.set(shortURL, normalizedUrl);
+        }
 
+        try {
+          await redis.call("BF.ADD", "shortUrlFilter", shortURL);
+        } catch (e: any) {
+          console.error("Bloom Filter error:", e.message);
+        }
 
         return newUrl;
       } catch (error) {
-        console.error(error);
-        throw new GraphQLError("Failed to create URL", {
+        if (error instanceof GraphQLError) {
+          throw error
+        }
+        console.error("Error in getUrl resolver:", error);
+        throw new GraphQLError("Failed to retrieve URL", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
-        })
+        });
       }
     },
     updateUrl: async (
       _: any,
-      { shortCode, newUrl }: { shortCode: string; newUrl: string },
+      { shortCode, newUrl, ttl }: { shortCode: string; newUrl: string; ttl?: number },
       { prisma, redis }: Context
     ): Promise<ShortenedURL> => {
       const normalizedNewUrl = normalizeUrl(newUrl)
@@ -111,20 +111,38 @@ export default {
         });
 
         if (!existing) {
-          throw new GraphQLError("URL not found", {
+          throw new GraphQLError("URL not found by the shortCode", {
             extensions: { code: "NOT_FOUND" },
           });
+        }
+
+
+        const newExpiredAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
+        if (ttl) {
+          await redis.del(shortCode);
+          await redis.set(shortCode, newUrl, "EX", ttl);
+
         }
 
         // 更新資料庫
         const updated = await prisma.shortenedURL.update({
           where: { shortCode: shortCode },
-          data: { originalUrl: normalizedNewUrl },
+          data: {
+            originalUrl: normalizedNewUrl,
+            ...(newExpiredAt && { expiredAt: newExpiredAt }), //有 ttl 才會更新。 沒有就不更新
+          },
         });
 
-        await redis.del(shortCode);
+
         return updated;
+
       } catch (error) {
+        // 檢查錯誤是否為 GraphQLError，如果是，直接拋出
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        // 如果是其他類型的錯誤（例如資料庫錯誤），則視為內部伺服器錯誤
         console.error("Error in updateUrl resolver:", error);
         throw new GraphQLError("Failed to update URL", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
@@ -139,7 +157,7 @@ export default {
       try {
         if (!shortCode && !originalUrl) {
           throw new GraphQLError("Must provide shortCode or originalUrl", {
-            extensions: { code: "BAD_USER_INPUT" },
+            extensions: { code: "NO SHORTCODE OR ORIGINALURL" },
           });
         }
 
@@ -170,8 +188,11 @@ export default {
 
         return true;
       } catch (error) {
-        console.error("Error in deleteUrl resolver:", error);
-        throw new GraphQLError("Failed to delete URL", {
+        if (error instanceof GraphQLError) {
+          throw error
+        }
+        console.error("Error in getUrl resolver:", error);
+        throw new GraphQLError("Failed to retrieve URL", {
           extensions: { code: "INTERNAL_SERVER_ERROR" },
         });
       }

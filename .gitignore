@@ -3,4 +3,4 @@ node_modules
 .DS_Store
 dist/
 .yarnrc.yml
-explain-for-me.md
+給自己的解釋.md

@@ -100,7 +100,7 @@ describe("URL Shortener Resolvers", () => {
     });
     await redis.set(created.shortCode, created.originalUrl);
     await redis.call("BF.ADD", "shortUrlFilter", created.shortCode);
-    
+
     const query = `
     query {
       getUrl(shortCode: "get123") {
@@ -185,6 +185,130 @@ describe("URL Shortener Resolvers", () => {
 
     const cached = await redis.get("del123");
     should.not.exist(cached);
+  });
+
+
+  it("should return an error for invalid originalUrl", async () => {
+    const mutation = `
+      mutation {
+        createUrl(originalUrl: "") {
+          originalUrl
+        }
+      }
+    `;
+
+    const result: any = await graphql({
+      schema,
+      source: mutation,
+      contextValue: context,
+    });
+
+    should.exist(result.errors);
+    should.equal(result.data.createUrl, null);
+    should.equal(result.errors[0].message, "Invalid URL, please enter a valid web address.");
+  });
+
+  it("should return an error for duplicate shortCode", async () => {
+    // 先建立一個短網址
+    await prisma.shortenedURL.create({
+      data: { originalUrl: "https://first.com", shortCode: "duplicate" },
+    });
+
+    const mutation = `
+      mutation {
+        createUrl(originalUrl: "https://second.com", shortCode: "duplicate") {
+          shortCode
+        }
+      }
+    `;
+
+    const result: any = await graphql({
+      schema,
+      source: mutation,
+      contextValue: context,
+    });
+
+    should.exist(result.errors);
+     should.not.exist(result.data.createUrl);
+    should.equal(result.errors[0].extensions.code, "INTERNAL_SERVER_ERROR");
+  });
+
+
+  it("should create a URL with TTL and set Redis expiration", async () => {
+    const ttlSeconds = 10;
+    const mutation = `
+      mutation {
+        createUrl(originalUrl: "https://ttl.com", ttl: ${ttlSeconds}) {
+          shortCode
+        }
+      }
+    `;
+
+    const result: any = await graphql({
+      schema,
+      source: mutation,
+      contextValue: context,
+    });
+
+    should.not.exist(result.errors);
+    const shortCode = result.data.createUrl.shortCode;
+
+    // 檢查 Redis 的 TTL
+    const ttl = await redis.ttl(shortCode);
+    should.equal(ttl >= 0 && ttl <= ttlSeconds, true);
+  });
+
+
+  it("should return an error when getting a non-existent shortCode", async () => {
+    const query = `
+      query {
+        getUrl(shortCode: "nonexistent") {
+          shortCode
+        }
+      }
+    `;
+    const result: any = await graphql({
+      schema,
+      source: query,
+      contextValue: context,
+    });
+    should.exist(result.errors);
+     should.not.exist(result.data.createUrl);
+    should.equal(result.errors[0].extensions.code, "NOT_FOUND");
+  });
+
+  it("should return an error when updating a non-existent shortCode", async () => {
+    const mutation = `
+      mutation {
+        updateUrl(shortCode: "nonexistent", newUrl: "https://new.com") {
+          shortCode
+        }
+      }
+    `;
+    const result: any = await graphql({
+      schema,
+      source: mutation,
+      contextValue: context,
+    });
+    should.exist(result.errors);
+     should.not.exist(result.data.createUrl);
+    should.equal(result.errors[0].extensions.code, "NOT_FOUND");
+  });
+
+  it("should return an error when deleting a non-existent shortCode", async () => {
+    const mutation = `
+      mutation {
+        deleteUrl(shortCode: "nonexistent")
+      }
+    `;
+    const result: any = await graphql({
+      schema,
+      source: mutation,
+      contextValue: context,
+    });
+    should.exist(result.errors);
+    should.not.exist(result.data.createUrl);
+    should.equal(result.errors[0].extensions.code, "NOT_FOUND");
   });
 });
 //#endregion
