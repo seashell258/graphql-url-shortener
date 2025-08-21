@@ -9,7 +9,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: urlshortener
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --event-scheduler=ON
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
